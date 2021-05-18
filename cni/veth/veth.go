@@ -22,6 +22,10 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
+
+	"tkestack.io/galaxy/pkg/api/cniutil"
+	"tkestack.io/galaxy/pkg/api/galaxy/constant"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -175,22 +179,55 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	// run the IPAM plugin and get back the config to apply
-	generalResult, err := ipam.ExecAdd(conf.IPAM.Type, args.StdinData)
+	cniArgs, err := cniutil.ParseCNIArgs(args.Args)
 	if err != nil {
 		return err
 	}
-	result020, err := generalResult.GetAsVersion(t020.ImplementedSpecVersion)
-	if err != nil {
-		return err
-	}
-	result, ok := result020.(*t020.Result)
+	srcPodIP, ok := cniArgs[constant.MigrateSrcPodIPArgName]
+	var result *t020.Result
 	if !ok {
-		return fmt.Errorf("failed to convert result")
+		// run the IPAM plugin and get back the config to apply
+		generalResult, err := ipam.ExecAdd(conf.IPAM.Type, args.StdinData)
+		if err != nil {
+			return err
+		}
+		result020, err := generalResult.GetAsVersion(t020.ImplementedSpecVersion)
+		if err != nil {
+			return err
+		}
+		r, ok := result020.(*t020.Result)
+		if !ok {
+			return fmt.Errorf("failed to convert result")
+		}
+		if r.IP4 == nil {
+			return fmt.Errorf("IPAM plugin returned missing IPv4 config")
+		}
+		result = r
+	} else {
+		// Pod is live-migrating, use the the same IP as it was before migrate, even if it does not belong to current subnet
+		result = &t020.Result{
+			IP4: &t020.IPConfig{
+				IP: net.IPNet{
+					IP: net.ParseIP(strings.Trim(srcPodIP, "\"")),
+				},
+			},
+		}
+		// to restore the connection of container during migrating, all routes of local containers should have the "src" parameter set.
+		// iproute2 CLI used to set route on host :
+		// ip route add $pod-ip dev $veth src $flannel.1-ip
+		flannelLink := "flannel.1"
+		l, err := netlink.LinkByName(flannelLink)
+		if err != nil {
+			return fmt.Errorf("get link %s failed: %v", flannelLink, err)
+		}
+		addrs, err := netlink.AddrList(l, netlink.FAMILY_V4)
+		if err != nil {
+			return fmt.Errorf("get addr of link %s failed: %v", flannelLink, err)
+		}
+		println(fmt.Sprintf("link %s, ip: %s", flannelLink, addrs[0].IP.String()))
+		conf.RouteSrc = addrs[0].IP.String()
 	}
-	if result.IP4 == nil {
-		return fmt.Errorf("IPAM plugin returned missing IPv4 config")
-	}
+
 	if err := connectsHostWithContainer(result, args, conf); err != nil {
 		return err
 	}

@@ -34,6 +34,8 @@ const (
 	ReserveFIPLabel = "reserved"
 
 	IPInfosKey = "ipinfos"
+
+	MigrateSrcPodIPArgName = "live.migrate.io/src-pod-ip"
 )
 
 // IPInfo is the container ip info
