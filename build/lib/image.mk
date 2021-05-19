@@ -71,7 +71,7 @@ image.build.%:
 	$(eval OS := $(word 1,$(subst _, ,$(PLATFORM))))
 	$(eval ARCH := $(word 2,$(subst _, ,$(PLATFORM))))
 	$(eval IMAGE_PLAT := $(subst _,/,$(PLATFORM)))
-	$(eval IMAGE_NAME := $(REGISTRY_PREFIX)/$(IMAGE)-$(ARCH):$(VERSION))
+	$(eval IMAGE_NAME := $(REGISTRY_PREFIX)/$(IMAGE)-$(ARCH)-migrate:$(VERSION))
 	@echo "===========> Building docker image $(IMAGE) $(VERSION) for $(IMAGE_PLAT)"
 	$(DOCKER) buildx build --platform $(IMAGE_PLAT) --load -t $(IMAGE_NAME) $(_DOCKER_BUILD_EXTRA_ARGS) \
 	 -f $(ROOT_DIR)/build/docker/$(IMAGE)/Dockerfile $(ROOT_DIR)
