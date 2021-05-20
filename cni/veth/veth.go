@@ -179,6 +179,21 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+	// to restore the connection of container during migrating, all routes of local containers should have the "src" parameter set.
+	// iproute2 CLI used to set route on host :
+	// ip route add $pod-ip dev $veth src $flannel.1-ip
+	flannelLink := "flannel.1"
+	l, err := netlink.LinkByName(flannelLink)
+	if err != nil {
+		return fmt.Errorf("get link %s failed: %v", flannelLink, err)
+	}
+	addrs, err := netlink.AddrList(l, netlink.FAMILY_V4)
+	if err != nil {
+		return fmt.Errorf("get addr of link %s failed: %v", flannelLink, err)
+	}
+	println(fmt.Sprintf("link %s, ip: %s", flannelLink, addrs[0].IP.String()))
+	conf.RouteSrc = addrs[0].IP.String()
+
 	cniArgs, err := cniutil.ParseCNIArgs(args.Args)
 	if err != nil {
 		return err
@@ -212,20 +227,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 				},
 			},
 		}
-		// to restore the connection of container during migrating, all routes of local containers should have the "src" parameter set.
-		// iproute2 CLI used to set route on host :
-		// ip route add $pod-ip dev $veth src $flannel.1-ip
-		flannelLink := "flannel.1"
-		l, err := netlink.LinkByName(flannelLink)
-		if err != nil {
-			return fmt.Errorf("get link %s failed: %v", flannelLink, err)
-		}
-		addrs, err := netlink.AddrList(l, netlink.FAMILY_V4)
-		if err != nil {
-			return fmt.Errorf("get addr of link %s failed: %v", flannelLink, err)
-		}
-		println(fmt.Sprintf("link %s, ip: %s", flannelLink, addrs[0].IP.String()))
-		conf.RouteSrc = addrs[0].IP.String()
 	}
 
 	if err := connectsHostWithContainer(result, args, conf); err != nil {
